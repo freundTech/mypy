@@ -1,12 +1,13 @@
 [case testDecoratedClassLine]
+# flags: --python-version 3.8
 def d(c): ...
 @d
 
 class C: ...
-class C: ...  # E: Name 'C' already defined on line 4
+class C: ...  # E: Name 'C' already defined on line 5
 
 [case testDecoratedFunctionLine]
-# flags: --disallow-untyped-defs
+# flags: --disallow-untyped-defs --python-version 3.8
 def d(f): ...  # type: ignore
 @d
 
@@ -14,20 +15,21 @@ def f(): ...  # E: Function is missing a return type annotation \
               # N: Use "-> None" if function does not return a value
 
 [case testIgnoreDecoratedFunction1]
-# flags: --disallow-untyped-defs --warn-unused-ignores
+# flags: --disallow-untyped-defs --warn-unused-ignores --python-version 3.8
 def d(f): ...  # type: ignore
 @d
 # type: ignore
 def f(): ...  # type: ignore  # E: unused 'type: ignore' comment
 
 [case testIgnoreDecoratedFunction2]
-# flags: --disallow-untyped-defs
+# flags: --disallow-untyped-defs --python-version 3.8
 def d(f): ...  # type: ignore
 @d
 
 def f(): ...  # type: ignore
 
 [case testIgnoreScopeIssue1032]
+# flags: --python-version 3.8
 def f(a: int): ...
 f(
     1,
@@ -35,6 +37,7 @@ f(
 )  # type: ignore
 
 [case testIgnoreScopeNested1]
+# flags: --python-version 3.8
 def g(x: str) -> str: ...
 def f(a: int) -> int: ...
 f(
@@ -46,6 +49,7 @@ f(
 )
 
 [case testIgnoreScopeNested2]
+# flags: --python-version 3.8
 [
     "IGNORE"  # type: ignore
     &
@@ -54,6 +58,7 @@ f(
 [builtins fixtures/list.pyi]
 
 [case testIgnoreScopeNested3]
+# flags: --python-version 3.8
 {
     "IGNORE"
     |  # type: ignore
@@ -62,6 +67,7 @@ f(
 [builtins fixtures/set.pyi]
 
 [case testIgnoreScopeNested4]
+# flags: --python-version 3.8
 {
     None: "IGNORE"
     ^
@@ -70,6 +76,7 @@ f(
 [builtins fixtures/dict.pyi]
 
 [case testIgnoreScopeNestedNonOverlapping]
+# flags: --python-version 3.8
 def f(x: int): ...
 def g(x: int): ...
 (
@@ -80,6 +87,7 @@ def g(x: int): ...
 [builtins fixtures/tuple.pyi]
 
 [case testIgnoreScopeNestedOverlapping]
+# flags: --python-version 3.8
 def f(x: int): ...
 def g(x: int): ...
 (
@@ -90,7 +98,7 @@ def g(x: int): ...
 [builtins fixtures/tuple.pyi]
 
 [case testIgnoreScopeUnused1]
-# flags: --warn-unused-ignores
+# flags: --warn-unused-ignores --python-version 3.8
 (  # type: ignore  # E: unused 'type: ignore' comment
     "IGNORE"  # type: ignore  # E: unused 'type: ignore' comment
     +  # type: ignore  # E: unused 'type: ignore' comment
@@ -99,7 +107,7 @@ def g(x: int): ...
 [builtins fixtures/primitives.pyi]
 
 [case testIgnoreScopeUnused2]
-# flags: --warn-unused-ignores
+# flags: --warn-unused-ignores --python-version 3.8
 (  # type: ignore  # E: unused 'type: ignore' comment
     "IGNORE"
     -  # type: ignore
@@ -107,7 +115,7 @@ def g(x: int): ...
 )  # type: ignore  # E: unused 'type: ignore' comment
 
 [case testIgnoreScopeUnused3]
-# flags: --warn-unused-ignores
+# flags: --warn-unused-ignores --python-version 3.8
 (  # type: ignore  # E: unused 'type: ignore' comment
     "IGNORE"
     /
@@ -115,21 +123,25 @@ def g(x: int): ...
 )  # type: ignore  # E: unused 'type: ignore' comment
 
 [case testPEP570ArgTypesMissing]
-# flags: --disallow-untyped-defs
+# flags: --disallow-untyped-defs --python-version 3.8
 def f(arg, /) -> None: ...  # E: Function is missing a type annotation for one or more arguments
 
 [case testPEP570ArgTypesBadDefault]
+# flags: --python-version 3.8
 def f(arg: int = "ERROR", /) -> None: ...  # E: Incompatible default for argument "arg" (default has type "str", argument has type "int")
 
 [case testPEP570ArgTypesDefault]
+# flags: --python-version 3.8
 def f(arg: int = 0, /) -> None:
     reveal_type(arg)  # N: Revealed type is 'builtins.int'
 
 [case testPEP570ArgTypesRequired]
+# flags: --python-version 3.8
 def f(arg: int, /) -> None:
     reveal_type(arg)  # N: Revealed type is 'builtins.int'
 
 [case testPEP570Required]
+# flags: --python-version 3.8
 def f(arg: int, /) -> None: ...  # N: "f" defined here
 f(1)
 f("ERROR")  # E: Argument 1 to "f" has incompatible type "str"; expected "int"
@@ -137,6 +149,7 @@ f(arg=1)  # E: Unexpected keyword argument "arg" for "f"
 f(arg="ERROR")  # E: Unexpected keyword argument "arg" for "f"
 
 [case testPEP570Default]
+# flags: --python-version 3.8
 def f(arg: int = 0, /) -> None: ...  # N: "f" defined here
 f()
 f(1)
@@ -145,9 +158,10 @@ f(arg=1)  # E: Unexpected keyword argument "arg" for "f"
 f(arg="ERROR")  # E: Unexpected keyword argument "arg" for "f"
 
 [case testPEP570Calls]
+# flags: --python-version 3.8
 from typing import Any, Dict
 def f(p, /, p_or_kw, *, kw) -> None: ...  # N: "f" defined here
-d = None # type: Dict[Any, Any]
+d: Dict[Any, Any]
 f(0, 0, 0)  # E: Too many positional arguments for "f"
 f(0, 0, kw=0)
 f(0, p_or_kw=0, kw=0)
@@ -157,6 +171,7 @@ f(**d)  # E: Missing positional argument "p_or_kw" in call to "f"
 [builtins fixtures/dict.pyi]
 
 [case testPEP570Signatures1]
+# flags: --python-version 3.8
 def f(p1: bytes, p2: float, /, p_or_kw: int, *, kw: str) -> None:
     reveal_type(p1)  # N: Revealed type is 'builtins.bytes'
     reveal_type(p2)  # N: Revealed type is 'builtins.float'
@@ -164,6 +179,7 @@ def f(p1: bytes, p2: float, /, p_or_kw: int, *, kw: str) -> None:
     reveal_type(kw)  # N: Revealed type is 'builtins.str'
 
 [case testPEP570Signatures2]
+# flags: --python-version 3.8
 def f(p1: bytes, p2: float = 0.0, /, p_or_kw: int = 0, *, kw: str) -> None:
     reveal_type(p1)  # N: Revealed type is 'builtins.bytes'
     reveal_type(p2)  # N: Revealed type is 'builtins.float'
@@ -171,29 +187,33 @@ def f(p1: bytes, p2: float = 0.0, /, p_or_kw: int = 0, *, kw: str) -> None:
     reveal_type(kw)  # N: Revealed type is 'builtins.str'
 
 [case testPEP570Signatures3]
+# flags: --python-version 3.8
 def f(p1: bytes, p2: float = 0.0, /, *, kw: int) -> None:
     reveal_type(p1)  # N: Revealed type is 'builtins.bytes'
     reveal_type(p2)  # N: Revealed type is 'builtins.float'
     reveal_type(kw)  # N: Revealed type is 'builtins.int'
 
 [case testPEP570Signatures4]
+# flags: --python-version 3.8
 def f(p1: bytes, p2: int = 0, /) -> None:
     reveal_type(p1)  # N: Revealed type is 'builtins.bytes'
     reveal_type(p2)  # N: Revealed type is 'builtins.int'
 
 [case testPEP570Signatures5]
+# flags: --python-version 3.8
 def f(p1: bytes, p2: float, /, p_or_kw: int) -> None:
     reveal_type(p1)  # N: Revealed type is 'builtins.bytes'
     reveal_type(p2)  # N: Revealed type is 'builtins.float'
     reveal_type(p_or_kw)  # N: Revealed type is 'builtins.int'
 
 [case testPEP570Signatures6]
+# flags: --python-version 3.8
 def f(p1: bytes, p2: float, /) -> None:
     reveal_type(p1)  # N: Revealed type is 'builtins.bytes'
     reveal_type(p2)  # N: Revealed type is 'builtins.float'
 
 [case testWalrus]
-# flags: --strict-optional
+# flags: --strict-optional --python-version 3.8
 from typing import NamedTuple, Optional, List
 from typing_extensions import Final
 
@@ -368,6 +388,7 @@ reveal_type(z2)  # E: Name 'z2' is not defined  # N: Revealed type is 'Any'
 [builtins fixtures/isinstancelist.pyi]
 
 [case testWalrusPartialTypes]
+# flags: --python-version 3.8
 from typing import List
 
 def check_partial_list() -> None:
@@ -384,6 +405,7 @@ def check_partial_list() -> None:
 [builtins fixtures/list.pyi]
 
 [case testWalrusExpr]
+# flags: --python-version 3.8
 def func() -> None:
     foo = Foo()
     if x := foo.x:
@@ -394,6 +416,7 @@ class Foo:
         self.x = 123
 
 [case testWalrusTypeGuard]
+# flags: --python-version 3.8
 from typing_extensions import TypeGuard
 def is_float(a: object) -> TypeGuard[float]: pass
 def main(a: object) -> None:
