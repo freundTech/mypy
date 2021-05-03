@@ -2,7 +2,7 @@ name: main
 
 on:
   push:
-    branches: [master]
+    branches: [unpin-virtualenv]
     tags: ['*']
   pull_request:
     paths-ignore:
