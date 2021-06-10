@@ -3735,28 +3735,44 @@ class TypeChecker(NodeVisitor[None], CheckerPluginInterface):
             if isinstance(subject_type, DeletedType):
                 self.msg.deleted_as_rvalue(subject_type, s)
 
+            # We have to check each pattern twice. Once ignoring the guard statements, to infer
+            # the capture types and once with them, to narrow the subject.
             pattern_types = [self.pattern_checker.accept(p, subject_type) for p in s.patterns]
 
             type_maps = [t.captures for t in pattern_types]  # type: List[TypeMap]
             self.infer_names_from_type_maps(type_maps)
 
-            for pattern_type, g, b in zip(pattern_types, s.guards, s.bodies):
+            for p, g, b in zip(s.patterns, s.guards, s.bodies):
                 with self.binder.frame_context(can_skip=True, fall_through=2):
-                    if b.is_unreachable or pattern_type.type is None:
+                    current_subject_type = self.expr_checker.narrow_type_from_binder(s.subject,
+                                                                                     subject_type)
+                    pattern_type = self.pattern_checker.accept(p, current_subject_type)
+                    if b.is_unreachable or isinstance(get_proper_type(pattern_type.type), UninhabitedType):
                         self.push_type_map(None)
+                        else_map = {}  # type: TypeMap
                     else:
-                        self.binder.put(s.subject, pattern_type.type)
+                        pattern_map, else_map = conditional_types_to_typemaps(s.subject, current_subject_type, pattern_type.type, pattern_type.rest_type)
+                        self.push_type_map(pattern_map)
                         self.push_type_map(pattern_type.captures)
-                    if g is not None:
-                        gt = get_proper_type(self.expr_checker.accept(g))
+                    if g is not None and pattern_type is not None:
+                        with self.binder.frame_context(can_skip=True, fall_through=3):
+                            gt = get_proper_type(self.expr_checker.accept(g))
 
-                        if isinstance(gt, DeletedType):
-                            self.msg.deleted_as_rvalue(gt, s)
+                            if isinstance(gt, DeletedType):
+                                self.msg.deleted_as_rvalue(gt, s)
 
-                        if_map, _ = self.find_isinstance_check(g)
+                            guard_map, guard_else_map = self.find_isinstance_check(g)
+                            else_map = or_conditional_maps(else_map, guard_else_map)
 
-                        self.push_type_map(if_map)
-                    self.accept(b)
+                            self.push_type_map(guard_map)
+                            self.accept(b)
+                    else:
+                        self.accept(b)
+                self.push_type_map(else_map)
+
+            # This is needed due to a bug/quirk in frame_context. Without it types will stay narrowed after the match.
+            with self.binder.frame_context(can_skip=False, fall_through=2):
+                pass
 
     def infer_names_from_type_maps(self, type_maps: List[TypeMap]) -> None:
         all_captures = defaultdict(list)  # type: Dict[Var, List[Tuple[NameExpr, Type]]]
@@ -4648,7 +4664,8 @@ class TypeChecker(NodeVisitor[None], CheckerPluginInterface):
             # We intentionally use 'conditional_type_map' directly here instead of
             # 'self.conditional_type_map_with_intersection': we only compute ad-hoc
             # intersections when working with pure instances.
-            partial_type_maps.append(conditional_type_map(expr, expr_type, target_type))
+            types = conditional_types(expr_type, target_type)
+            partial_type_maps.append(conditional_types_to_typemaps(expr, expr_type, *types))
 
         return reduce_conditional_maps(partial_type_maps)
 
@@ -5074,9 +5091,13 @@ class TypeChecker(NodeVisitor[None], CheckerPluginInterface):
                                                expr_type: Type,
                                                type_ranges: Optional[List[TypeRange]],
                                                ) -> Tuple[TypeMap, TypeMap]:
+        #TODO
         # For some reason, doing "yes_map, no_map = conditional_type_maps(...)"
         # doesn't work: mypyc will decide that 'yes_map' is of type None if we try.
-        initial_maps = conditional_type_map(expr, expr_type, type_ranges)
+        initial_types = conditional_types(expr_type, type_ranges)
+
+        initial_maps = conditional_types_to_typemaps(expr, expr_type, *initial_types)
+
         yes_map = initial_maps[0]  # type: TypeMap
         no_map = initial_maps[1]  # type: TypeMap
 
@@ -5125,10 +5146,10 @@ class TypeChecker(NodeVisitor[None], CheckerPluginInterface):
             return False
 
 
-def conditional_type_map(expr: Expression,
-                         current_type: Optional[Type],
-                         proposed_type_ranges: Optional[List[TypeRange]],
-                         ) -> Tuple[TypeMap, TypeMap]:
+def conditional_types(current_type: Optional[Type],
+                     proposed_type_ranges: Optional[List[TypeRange]],
+                     ) -> Tuple[Optional[Type], Optional[Type]]:
+    #TODO
     """Takes in an expression, the current type of the expression, and a
     proposed type of that expression.
 
@@ -5138,33 +5159,50 @@ def conditional_type_map(expr: Expression,
     if it was not the proposed type, if any. None means bot, {} means top"""
     if proposed_type_ranges:
         proposed_items = [type_range.item for type_range in proposed_type_ranges]
+        proposed_literal_items = [item.last_known_value if isinstance(item, Instance) and item.last_known_value is not None else item
+                                  for item in proposed_items]
         proposed_type = make_simplified_union(proposed_items)
+        proposed_literal_type = make_simplified_union(proposed_literal_items)
         if current_type:
             if isinstance(proposed_type, AnyType):
                 # We don't really know much about the proposed type, so we shouldn't
                 # attempt to narrow anything. Instead, we broaden the expr to Any to
                 # avoid false positives
-                return {expr: proposed_type}, {}
+                return proposed_type, None
             elif (not any(type_range.is_upper_bound for type_range in proposed_type_ranges)
-               and is_proper_subtype(current_type, proposed_type)):
+               and is_proper_subtype(current_type, proposed_literal_type)):
                 # Expression is always of one of the types in proposed_type_ranges
-                return {}, None
-            elif not is_overlapping_types(current_type, proposed_type,
+                return None, UninhabitedType()
+            elif not is_overlapping_types(current_type, proposed_literal_type,
                                           prohibit_none_typevar_overlap=True):
                 # Expression is never of any type in proposed_type_ranges
-                return None, {}
+                return UninhabitedType(), None
             else:
                 # we can only restrict when the type is precise, not bounded
                 proposed_precise_type = UnionType([type_range.item
                                           for type_range in proposed_type_ranges
                                           if not type_range.is_upper_bound])
                 remaining_type = restrict_subtype_away(current_type, proposed_precise_type)
-                return {expr: proposed_type}, {expr: remaining_type}
+                return proposed_type, remaining_type
         else:
-            return {expr: proposed_type}, {}
+            return proposed_type, current_type
     else:
         # An isinstance check, but we don't understand the type
-        return {}, {}
+        return None, None
+
+
+def conditional_types_to_typemaps(expr: Expression, expr_typ: Type, yes_type: Type, no_type: Type) -> Tuple[TypeMap, TypeMap]:
+    maps = []  # type: List[TypeMap]
+    for typ in (yes_type, no_type):
+        proper_type = get_proper_type(typ)
+        if isinstance(proper_type, UninhabitedType):
+            maps.append(None)
+        elif proper_type is None:
+            maps.append({})
+        else:
+            maps.append({expr: typ})
+
+    return cast(Tuple[TypeMap, TypeMap], tuple(maps))
 
 
 def gen_unique_name(base: str, table: SymbolTable) -> str:

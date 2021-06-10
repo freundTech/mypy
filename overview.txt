@@ -1,0 +1,3 @@
+1. Parsing: fastparse.py ASTConverter
+2. semantic analysis pass 1: semanal_pass1.py SemanticAnalyzerPreAnalysis
+2. 
