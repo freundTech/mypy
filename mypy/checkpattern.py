@@ -17,10 +17,11 @@ from mypy.patterns import (
 )
 from mypy.plugin import Plugin
 from mypy.subtypes import is_subtype
-from mypy.typeops import try_getting_str_literals_from_type, make_simplified_union
+from mypy.typeops import try_getting_str_literals_from_type, make_simplified_union, coerce_to_literal, \
+    try_expanding_enum_to_union
 from mypy.types import (
     ProperType, AnyType, TypeOfAny, Instance, Type, UninhabitedType, get_proper_type,
-    TypedDictType, TupleType, NoneType
+    TypedDictType, TupleType, NoneType, LiteralType
 )
 from mypy.typevars import fill_typevars
 from mypy.visitor import PatternVisitor
@@ -259,7 +260,7 @@ class PatternChecker(PatternVisitor[PatternType]):
             else:
                 new_type = UninhabitedType()
             # All subpatterns always match, so we can apply negative narrowing
-            if all(isinstance(get_proper_type(typ), UninhabitedType) for typ in inner_rest_types):
+            if all(isinstance(get_proper_type(typ), UninhabitedType) for typ in rest_inner_types):
                 new_type, rest_type = conditional_types_wrapper(current_type, new_type)
 
         else:
@@ -625,6 +626,13 @@ def get_type_range(typ: Type) -> "mypy.checker.TypeRange":
 def conditional_types_wrapper(current_type: Optional[Type],
                               proposed_type: Type,
                               ) -> Tuple[Type, Type]:
+    proposed_type = coerce_to_literal(proposed_type)
+
+    # Usually conditional_types doesn't restrict enum values. In match statements we want to restrict them though.
+    if isinstance(proposed_type, LiteralType) and proposed_type.is_enum_literal() \
+            and not enum_has_custom_equals(proposed_type.fallback) and current_type is not None:
+        current_type = try_expanding_enum_to_union(current_type, proposed_type.fallback.type.fullname)
+
     if_type, else_type = mypy.checker.conditional_types(current_type, [get_type_range(proposed_type)])
     if if_type is None:
         if_type = current_type
@@ -632,3 +640,12 @@ def conditional_types_wrapper(current_type: Optional[Type],
         else_type = current_type
 
     return if_type, else_type
+
+
+def enum_has_custom_equals(enum: Instance):
+    assert enum.type.is_enum
+    for typ in enum.type.mro:
+        if typ.fullname == "enum.Enum":
+            return False
+        if "__eq__" in typ.names:
+            return True

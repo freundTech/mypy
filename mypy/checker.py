@@ -4661,6 +4661,7 @@ class TypeChecker(NodeVisitor[None], CheckerPluginInterface):
             if enum_name is not None:
                 expr_type = try_expanding_enum_to_union(expr_type, enum_name)
 
+            # TODO
             # We intentionally use 'conditional_type_map' directly here instead of
             # 'self.conditional_type_map_with_intersection': we only compute ad-hoc
             # intersections when working with pure instances.
